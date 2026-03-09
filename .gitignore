@@ -1,0 +1,71 @@
+# ===========================
+# Sensitive Configuration
+# ===========================
+# Never commit real credentials, keys, or private IPs
+*.env
+*.key
+*.pem
+*.pfx
+*.p12
+secrets/
+credentials/
+
+# ===========================
+# OS Generated Files
+# ===========================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.fuse_hidden*
+.Trash-*
+
+# ===========================
+# Editor & IDE Files
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+*.bak
+
+# ===========================
+# Logs & Exports
+# ===========================
+# Do not commit raw log exports or SIEM data dumps
+logs/
+*.log
+*.csv
+wazuh-exports/
+alerts-export/
+
+# ===========================
+# VM & Hypervisor Artifacts
+# ===========================
+*.iso
+*.qcow2
+*.vmdk
+*.vdi
+*.ova
+*.ovf
+
+# ===========================
+# Scripts with Hardcoded Data
+# ===========================
+# Commit sanitized versions only
+*-private.ps1
+*-private.sh
+user-import-real.csv
