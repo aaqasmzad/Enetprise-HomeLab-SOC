@@ -1,8 +1,8 @@
 # 🏢 Enterprise IT Infrastructure & SOC HomeLab
 
-[![Arch Linux|180](https://img.shields.io/badge/Arch%20Linux-1793D1?logo=arch-linux&logoColor=fff)]
+![Arch Linux|180](https://img.shields.io/badge/Arch%20Linux-1793D1?logo=arch-linux&logoColor=fff)
 ![Platform|180](https://img.shields.io/badge/Hypervisor-KVM%2FQEMU-white?)
-[![Windows|180](https://custom-icon-badges.demolab.com/badge/Windows-0078D6?logo=windows11&logoColor=white)]
+![Windows|180](https://custom-icon-badges.demolab.com/badge/Windows-0078D6?logo=windows11&logoColor=white)
 ![Platform|180](https://img.shields.io/badge/Hypervisor-VirtualBox-blue?logo=windows)
 
 ![AD|180](https://img.shields.io/badge/Identity-Active%20Directory-0078D4?logo=windows)
