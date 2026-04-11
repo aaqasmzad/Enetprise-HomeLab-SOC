@@ -35,6 +35,7 @@ This HomeLab replicates the infrastructure of a small-to-medium enterprise, enco
 - **Real-time Threat Detection** using a self-hosted Wazuh SIEM with custom detection rules
 - **Automated Incident Response** that autonomously isolates attackers without human intervention
 - **Network Perimeter Defense** with IDS/IPS and Layer 3/7 web filtering
+- **Network Segmentation** via VLAN-isolated trust zones with inter-VLAN firewall enforcement and custom IPS rules targeting lateral movement
 
 The lab is intentionally *adversarial* — every defensive control was validated by actively simulating the attack it was designed to stop.
 
@@ -43,34 +44,39 @@ The lab is intentionally *adversarial* — every defensive control was validated
 ## 🏗️ Architecture & Network Topology
 
 ```
-                        [ Internet / WAN ]
-                                │
-                    ┌───────────▼───────────┐
-                    │   OPNsense Firewall   │  ← Suricata IPS, Web Filter
-                    │   WAN + LAN Gateway   │
-                    └───────────┬───────────┘
-                                │
-              ══════════════════▼══════════════════
-                       LAN: 10.10.10.0/24
-              ══╦══════════╦═══════════╦═══════╦══
-                │          │           │       │
-          ┌───────▼────┐ ┌───▼───┐ ┌────▼───┐ ┌─▼──────┐
-          │  DC/DNS    │ │  FS   │ │ Wazuh  │ │Win 10  │
-          │10.10.10.10 │ │ .11   │ │  .9    │ │Clients │
-          │hlab.lan    │ │FS-CORE│ │ SIEM   │ │(Domain)│
-          └────────────┘ └───────┘ └────────┘ └────────┘
+[ Internet / WAN ]
+                            │
+                ┌───────────▼───────────┐
+                │   OPNsense Firewall   │  ← Suricata IPS, Web Filter
+                │   WAN + VLAN Gateway  │
+                └───────────┬───────────┘
+                            │ (trunk)
+          ┌─────────────────┼──────────────────┬─────────────────┐
+          │                 │                  │                 │
+ ═════════▼═════   ═════════▼═══════  ═════════▼══════  ═════════▼════
+ VLAN10 MGMT          VLAN20 SERVER    VLAN30 CLIENT    VLAN40 ATTACKER
+ 10.10.10.0/24        10.10.20.0/24    10.10.30.0/24    10.10.40.0/24
+ ═════╦═══════     ════════╦════════  ═══════╦════════  ══════╦═══════
+      │                    │                 │                 │
+┌─────▼──────┐       ┌──────▼─────┐   ┌──────▼─────┐   ┌──────▼─────┐
+│  DC/DNS    │       │  FS-CORE   │   │  Win 10    │   │   Kali     │
+│10.10.10.10 │       │ 10.10.20.x │   │ 10.10.30.x │   │ 10.10.40.x │
+│  Wazuh     │       │            │   │ (Domain)   │   │ (Attacker) │
+│10.10.10.9  │       └────────────┘   └────────────┘   └────────────┘
+└────────────┘
 ```
 
-| Host | IP Address | Role |
-|------|-----------|------|
-| OPNsense | `10.10.10.1` | Firewall, Gateway, DNS Forwarder |
-| Domain Controller | `10.10.10.10` | AD DS, DNS, DHCP (`dc.hlab.lan`) |
-| File Server Core | `10.10.10.11` | SMB Shares, NTFS Permissions (`FS`) |
-| Wazuh SIEM | `10.10.10.9` | Log Aggregation, Alerting, Active Response |
-| Client Endpoints | `10.10.10.x` | Windows 10 Pro (Domain-Joined) |
+| Host | IP Address | VLAN | Role |
+|------|-----------|------|------|
+| OPNsense | `10.10.10.1` | VLAN10 — MGMT | Firewall, Gateway, DNS Forwarder |
+| Domain Controller | `10.10.10.10` | VLAN10 — MGMT | AD DS, DNS, DHCP (`dc.hlab.lan`) |
+| Wazuh SIEM | `10.10.10.9` | VLAN10 — MGMT | Log Aggregation, Alerting, Active Response |
+| File Server Core | `10.10.20.x` | VLAN20 — SERVER | SMB Shares, NTFS Permissions (`FS`) |
+| Client Endpoints | `10.10.30.x` | VLAN30 — CLIENT | Windows 10 Pro (Domain-Joined) |
+| Kali Linux | `10.10.40.x` | VLAN40 — ATTACKER | Red Team / Pentest (Phase 10) |
 
 > ⚠️ **Note on Network Evolution:**
-> The lab was originally provisioned on the `192.168.10.0/24` subnet. During the hardening phase, the entire infrastructure was migrated to `10.10.10.0/24`. This change was implemented to better simulate enterprise-grade IP addressing schemes and to facilitate cleaner routing during the upcoming VLAN implementation phase.
+> The lab was originally provisioned on a flat `192.168.10.0/24` subnet, later migrated to `10.10.10.0/24`. In Phase 11, the flat network was segmented into four isolated VLANs to enforce trust-zone separation and simulate enterprise-grade network architecture.
 
 ---
 
@@ -210,15 +216,43 @@ The lab is intentionally *adversarial* — every defensive control was validated
 
 ---
 
+### Phase 11 — Network & Infrastructure Maturity
+
+**Objective:** Segment the flat network into isolated trust zones and harden IPS with lateral-movement-aware detection rules.
+
+- Designed a **four-zone VLAN architecture**: MGMT (VLAN10 — `10.10.10.0/24`), SERVER (VLAN20 — `10.10.20.0/24`), CLIENT (VLAN30 — `10.10.30.0/24`), and ATTACKER (VLAN40 — `10.10.40.0/24`) — all trunked over a single physical LAN link to the KVM host
+- Configured VLAN sub-interfaces in OPNsense (`Interfaces → Other Types → VLAN`) with the existing LAN port as the trunk parent; existing `10.10.10.0/24` subnet retained as MGMT to avoid re-provisioning DC, Wazuh, and OPNsense
+
+![VLAN Creation in OPNsense](images/opnsense-vlan-add-1.png)![](images/opnsense-vlan-add-2.png)![](images/opnsense-vlan-add-3.png)
+
+- Preserved **Windows Server DC as the sole DHCP authority** — configured OPNsense DHCP Relay (instead of DHCP Server) to forward requests from VLAN20/30/40 to `10.10.10.10`; created matching scopes on the DC
+- Enforced **inter-VLAN firewall policy** with default-deny between all zones; created a `DC_Required_Ports` alias (DNS/53, Kerberos/88, NTP/123, RPC/135, LDAP/389, SMB/445, GC/3268, RPC-dynamic/49152-49200) and applied targeted pass rules for domain-joined VLANs to reach the DC — all other inter-VLAN traffic blocked
+
+![DC Required Ports Alias & DHCP Scopes](images/dc-required-ports.png)![](images/vlan-dhcp-scopes.png)![](images/vlan-rules-block-pass.png)
+
+- Built **VLAN-tagged bridges** on the Arch Linux KVM host (`br-server`, `br-client`, `br-attacker`) bound to VLAN sub-interfaces of `br0`; attached VMs to their respective bridges via `virt-manager`
+- Authored a **custom Suricata ruleset** (`crules.rules`) targeting lateral movement: SMB enumeration (threshold-based), ADMIN$ share access, PsExec service creation (`PSEXESVC`), and cross-VLAN attacker traffic from VLAN40 — hosted via Python HTTP server on Wazuh and pulled into OPNsense via `custom.xml`
+
+![Suricata Custom Rules & Policy](images/suricata-custom-rules.png)![](images/suricata-custom-rules-xml.png)![](images/suricata-custom-rules-enabled.png)
+
+- Configured an **IDS Policy** (`HLAB-Drop-Lateral-Movement`) to override all four custom rule actions from `alert` to `drop` inline — converting passive detection to active blocking
+
+![](images/suricata-custom-rules-sid.png)![](images/suricata-custom-rules-policy.png)
+
+> 💡 *Why it matters:* A flat network means a single compromised endpoint can reach every other host. VLAN segmentation enforces blast-radius containment at the network layer, while custom Suricata rules ensure that lateral movement techniques — the core of most post-compromise kill chains — are detected and dropped before they succeed.
+
+---
+
 ## 🛡️ MITRE ATT&CK Coverage
 
-| Technique | ID | Phase | Detection Method |
-|-----------|----|-------|-----------------|
-| Brute Force: Password Guessing | T1110.001 | Phase 5 & 6 | Event ID 4740 → Active Response |
-| Valid Accounts: Domain Accounts | T1078.002 | Phase 5 | Privilege Escalation Alert |
-| Indicator Removal: Clear Windows Event Logs | T1070.001 | Phase 7 | Event ID 1102 → Custom Rule |
-| Exfiltration over Removable Media | T1052 | Phase 3 | Custom Rule 110001 |
-| Data from Network Shared Drive | T1039 | Phase 4 | FIM Real-time Monitoring |
+| Technique                                   | ID        | Phase       | Detection Method                               |
+| ------------------------------------------- | --------- | ----------- | ---------------------------------------------- |
+| Brute Force: Password Guessing              | T1110.001 | Phase 5 & 6 | Event ID 4740 → Active Response                |
+| Valid Accounts: Domain Accounts             | T1078.002 | Phase 5     | Privilege Escalation Alert                     |
+| Indicator Removal: Clear Windows Event Logs | T1070.001 | Phase 7     | Event ID 1102 → Custom Rule                    |
+| Exfiltration over Removable Media           | T1052     | Phase 3     | Custom Rule 110001                             |
+| Data from Network Shared Drive              | T1039     | Phase 4     | FIM Real-time Monitoring                       |
+| Lateral Movement: Remote Services           | T1021.002 | Phase 11    | Custom Suricata Rules — SMB/PsExec inline drop |
 
 ---
 
@@ -268,7 +302,7 @@ The project is in **Active Development**. Planned phases are scoped to available
 
 ### 🟣 Phase 10 — Offensive Security & Red/Blue Team Scenarios
 
-- [ ] **Kali Linux VM** — Deploy on Arch host (separate VLAN `10.10.20.0/24` via OPNsense); use as dedicated attacker machine
+- [ ] **Kali Linux VM** — Deploy on Arch host (separate VLAN `10.10.40.0/24` via OPNsense); use as dedicated attacker machine
 - [ ] **BloodHound + SharpHound** — Map AD attack paths graphically; identify and remediate shortest path to Domain Admin
 - [ ] **Mimikatz Scenarios** — Simulate Pass-the-Hash and Pass-the-Ticket attacks (MITRE T1550); validate Sysmon + Wazuh detection
 - [ ] **Atomic Red Team** — Execute automated MITRE ATT&CK technique simulations; expand detection coverage across kill chain stages
@@ -278,8 +312,8 @@ The project is in **Active Development**. Planned phases are scoped to available
 
 ### 🔵 Phase 11 — Network & Infrastructure Maturity
 
-- [ ] **VLAN Segmentation** — Create Management, Server, Client, and Attacker VLANs in OPNsense; enforce inter-VLAN firewall policies
-- [ ] **Advanced Suricata Tuning** — Write custom rules targeting lateral movement techniques (e.g., SMB enumeration, PsExec patterns); convert alerts to inline drops
+- [x] **VLAN Segmentation** — Create Management, Server, Client, and Attacker VLANs in OPNsense; enforce inter-VLAN firewall policies
+- [x] **Advanced Suricata Tuning** — Write custom rules targeting lateral movement techniques (e.g., SMB enumeration, PsExec patterns); convert alerts to inline drops
 - [ ] **Linux Server Hardening** — Add Rocky Linux web/database VM; apply CIS Benchmark Level 1 and monitor with Wazuh agent
 - [ ] **Centralized Patch Management (WSUS)** — Deploy WSUS on FS-Core or a dedicated VM; manage update compliance across domain
 
